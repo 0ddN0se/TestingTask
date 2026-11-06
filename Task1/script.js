@@ -1,62 +1,59 @@
-// Дерево папок: ключ — имя папки, значение — либо вложенные папки (объект), либо файлы (массив)
-const tree = {
-  A: {
-    "A1-1": {
-      "A2-1": ["file1.txt", "file2.js"]
-    },
-    "A1-2": ["file3.js", "file4.js", "file5.js"],
-    "A1-3": ["readme.txt"]
-  },
-  B: {
-    "B1-2": ["file11.js", "file12.js", "file13.js"],
-    "B1-3": ["file15.js"],
-    "B1-4": ["file8.js", "readme.txt"]
-  }
-};
+const fs = require("fs");
+const path = require("path");
 
-// На сколько групп делить результат
+const ROOT_DIRS = ["./case1/A", "./case1/B"];
+//const ROOT_DIRS = ["./case2/A", "./case2/B"];
+//const ROOT_DIRS = ["./case3/A", "./case3/B"];
+//const ROOT_DIRS = ["./case4/A", "./case4/B"];
+//const ROOT_DIRS = ["./case5/A", "./case5/B"]; // пути 1-го уровня
+//const ROOT_DIRS = ["./case6/A"];
 const N = 2;
 
-// Рекурсивно обходим дерево и собираем папки, где есть хотя бы один .js
-// currentPath копит путь от корня, result — общий массив на все вызовы
-function collectJsFolders(node, currentPath = "", result = []) {
-  for (const key in node) {
-    const value = node[key];
-    // на верхнем уровне просто 'A', дальше 'A/A1-1' и т.д.
-    const newPath = currentPath ? `${currentPath}/${key}` : key;
+// Шаг 1+2: рекурсивно читаем диск, собираем листовые папки с .js
+function collect(dir, result = []) {
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  const subdirs = entries.filter(e => e.isDirectory());
+  const files = entries.filter(e => e.isFile());
 
-    if (Array.isArray(value)) {
-      // дошли до листа — это массив файлов, считаем .js
-      const jsCount = value.filter(file => file.endsWith(".js")).length;
-      // папки без .js не нужны
-      if (jsCount > 0) {
-        result.push({ path: newPath, jsCount });
-      }
-    } else {
-      // не массив — значит папка, идём глубже
-      collectJsFolders(value, newPath, result);
+  if (subdirs.length > 0) {
+    // не лист — идём глубже
+    for (const d of subdirs) collect(path.join(dir, d.name), result);
+  } else {
+    // лист — считаем .js
+    const jsCount = files.filter(f => f.name.toLowerCase().endsWith(".js")).length;
+    if (jsCount > 0) {
+      result.push({
+        path: dir.replace(/^\.\//, "").split("/").join(" \\ "),
+        jsCount,
+      });
     }
   }
   return result;
 }
 
-// Делим массив на n групп, разница в размере максимум 1
-function splitIntoGroups(items, n) {
-  const groups = [];
-  const base = Math.floor(items.length / n); // всем поровну
-  const remainder = items.length % n;        // эти группы получат +1
-
-  let index = 0;
-  for (let i = 0; i < n; i++) {
-    // первым remainder группам достаётся лишний элемент
-    const size = base + (i < remainder ? 1 : 0);
-    groups.push(items.slice(index, index + size));
-    index += size;
-  }
+// Шаг 3: деление по сумме .js
+function split(folders, n) {
+  const groups = Array.from({ length: n }, () => []);
+  const sums = new Array(n).fill(0);
+  // сначала сортируем по количеству js файлов, 
+  // затем кладем каждый по очереди в папку с наименьшим общим количеством
+  [...folders].sort((a, b) => b.jsCount - a.jsCount).forEach(f => {
+    const i = sums.indexOf(Math.min(...sums));
+    groups[i].push(f);
+    sums[i] += f.jsCount;
+  });
   return groups;
 }
 
-const folders = collectJsFolders(tree);
-const groups = splitIntoGroups(folders, N);
+// main
+const folders = ROOT_DIRS.flatMap(d => collect(d));
 
-console.log(groups);
+console.log("=== Задачи 1 и 2 ===");
+for (const f of folders) console.log(`  ${f.path} (${f.jsCount})`);
+
+console.log(`\n=== Задача 3 (N=${N}) ===`);
+split(folders, N).forEach((g, i) => {
+  const sum = g.reduce((s, f) => s + f.jsCount, 0);
+  console.log(`[${i + 1}] сумма .js = ${sum}`);
+  for (const f of g) console.log(`  ${f.path} (${f.jsCount})`);
+});
